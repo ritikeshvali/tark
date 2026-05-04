@@ -18,7 +18,7 @@ in active development
 - minimum viable HTTP server with single-request inference
 - token streaming (SSE)
 - KV cache reuse across turns
-- continous batching
+- continuous batching
 - prefix caching
 - benchmark harness
 
