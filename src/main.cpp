@@ -1,7 +1,68 @@
 #include "llama.h"
-#include <cstdio>
+#include "httplib.h"
+#include "nlohmann/json.hpp"
 #include <string>
 #include <vector>
+#include <cstdio>
+
+using json = nlohmann::json;
+
+// all your inference in one function
+std::string run_inference(llama_model* model, llama_context* ctx, const std::string& prompt) {
+    const llama_vocab* vocab = llama_model_get_vocab(model);
+
+    std::vector<llama_token> tokens(prompt.size() + 32);
+    int n_tokens = llama_tokenize(
+        vocab, prompt.c_str(), prompt.size(),
+        tokens.data(), tokens.size(), true, false
+    );
+    tokens.resize(n_tokens);
+
+    llama_batch batch = llama_batch_init(512, 0, 1);
+    for (int i = 0; i < n_tokens; i++) {
+        batch.token[i]     = tokens[i];
+        batch.pos[i]       = i;
+        batch.n_seq_id[i]  = 1;
+        batch.seq_id[i][0] = 0;
+        batch.logits[i]    = (i == n_tokens - 1);
+        batch.n_tokens++;
+    }
+
+    llama_decode(ctx, batch);
+
+    auto sparams = llama_sampler_chain_default_params();
+    llama_sampler* sampler = llama_sampler_chain_init(sparams);
+    llama_sampler_chain_add(sampler, llama_sampler_init_greedy());
+
+    std::string result;
+    char piece[128];
+    int n_cur = n_tokens;
+    int n_max = 128;
+
+    while (n_cur < n_max) {
+        llama_token tok = llama_sampler_sample(sampler, ctx, -1);
+        if (llama_vocab_is_eog(vocab, tok)) break;
+
+        int n = llama_token_to_piece(vocab, tok, piece, sizeof(piece), 0, false);
+        if (n > 0) { piece[n] = '\0'; result += piece; }
+
+        llama_batch_free(batch);
+        batch = llama_batch_init(1, 0, 1);
+        batch.token[0]     = tok;
+        batch.pos[0]       = n_cur;
+        batch.n_seq_id[0]  = 1;
+        batch.seq_id[0][0] = 0;
+        batch.logits[0]    = true;
+        batch.n_tokens     = 1;
+
+        llama_decode(ctx, batch);
+        n_cur++;
+    }
+
+    llama_sampler_free(sampler);
+    llama_batch_free(batch);
+    return result;
+}
 
 int main(int argc, char** argv) {
     if (argc < 2) {
@@ -21,73 +82,39 @@ int main(int argc, char** argv) {
     llama_context* ctx = llama_init_from_model(model, cparams);
     if (!ctx) { fprintf(stderr, "Failed to create context\n"); return 1; }
 
-    const llama_vocab* vocab = llama_model_get_vocab(model);  // add this
+    httplib::Server svr;
 
-    std::string prompt = "The meaning of life is";
-    std::vector<llama_token> tokens(prompt.size() + 32);
-    int n_tokens = llama_tokenize(
-        vocab, prompt.c_str(), prompt.size(),  // vocab here
-        tokens.data(), tokens.size(), true, false
-    );
+    svr.Get("/health", [](const httplib::Request&, httplib::Response& res) {
+        res.set_content("{\"status\":\"ok\"}", "application/json");
+    });
 
-    tokens.resize(n_tokens);
-
-    llama_batch batch = llama_batch_init(cparams.n_batch, 0, 1);
-    for (int i = 0; i < n_tokens; i++) {
-        batch.token[i]     = tokens[i];
-        batch.pos[i]       = i;
-        batch.n_seq_id[i]  = 1;
-        batch.seq_id[i][0] = 0;
-        batch.logits[i]    = (i == n_tokens - 1);
-        batch.n_tokens++;
-    }
-
-    if (llama_decode(ctx, batch) != 0) {
-        fprintf(stderr, "Prefill decode failed\n");
-        return 1;
-    }
-
-    // sampler setup
-    auto sparams = llama_sampler_chain_default_params();
-    llama_sampler* sampler = llama_sampler_chain_init(sparams);
-    llama_sampler_chain_add(sampler, llama_sampler_init_greedy());
-
-    // generation loop
-    int n_cur = n_tokens;
-    int n_max = 128;
-    char piece[128];
-
-    while (n_cur < n_max) {
-        llama_token tok = llama_sampler_sample(sampler, ctx, -1);
-
-        if (llama_vocab_is_eog(vocab, tok)) break;
-        
-        int n = llama_token_to_piece(vocab, tok, piece, sizeof(piece), 0, false);
-        if (n > 0) {
-            piece[n] = '\0';
-            printf("%s", piece);
-            fflush(stdout);
+    svr.Post("/v1/completions", [&](const httplib::Request& req, httplib::Response& res) {
+        auto body = json::parse(req.body, nullptr, false);
+        if (body.is_discarded() || !body.contains("prompt")) {
+            res.status = 400;
+            res.set_content("{\"error\":\"prompt required\"}", "application/json");
+            return;
         }
 
-        llama_batch_free(batch);
-        batch = llama_batch_init(1, 0, 1);
-        batch.token[0]     = tok;
-        batch.pos[0]       = n_cur;
-        batch.n_seq_id[0]  = 1;
-        batch.seq_id[0][0] = 0;
-        batch.logits[0]    = true;
-        batch.n_tokens     = 1;
+        std::string prompt = body["prompt"];
+        std::string output = run_inference(model, ctx, prompt);
 
-        if (llama_decode(ctx, batch) != 0) {
-            fprintf(stderr, "Decode failed at token %d\n", n_cur);
-            break;
-        }
-        n_cur++;
-    }
+        json response = {
+            {"id", "cmpl-1"},
+            {"object", "text_completion"},
+            {"model", "tark"},
+            {"choices", json::array({{
+                {"text", output},
+                {"finish_reason", "stop"}
+            }})}
+        };
 
-    printf("\n");
-    llama_sampler_free(sampler);
-    llama_batch_free(batch);
+        res.set_content(response.dump(), "application/json");
+    });
+
+    fprintf(stdout, "tark listening on http://0.0.0.0:8080\n");
+    svr.listen("0.0.0.0", 8080);
+
     llama_free(ctx);
     llama_model_free(model);
     llama_backend_free();

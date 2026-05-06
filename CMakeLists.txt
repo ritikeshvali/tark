@@ -7,4 +7,8 @@ add_subdirectory(vendor/llama.cpp)
 
 add_executable(tark src/main.cpp)
 target_link_libraries(tark PRIVATE llama)
-target_include_directories(tark PRIVATE vendor/llama.cpp/include)
+target_link_libraries(tark PRIVATE llama ws2_32)
+target_include_directories(tark PRIVATE 
+    vendor/llama.cpp/include
+    vendor
+)
