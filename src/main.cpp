@@ -1,9 +1,6 @@
 #include "llama.h"
 #include "httplib.h"
 #include "nlohmann/json.hpp"
-#include <string>
-#include <vector>
-#include <cstdio>
 
 using json = nlohmann::json;
 
