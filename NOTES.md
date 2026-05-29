@@ -49,3 +49,11 @@ gives the ChatGPT typewriter effect.
 # greedy sampling
 always pick the highest probability next token. deterministic, no randomness.
 simplest possible sampler. production uses temperature + top-p instead.
+
+# KV cache reuse
+llama_memory_seq_pos_max returns the highest cached position for seq 0. we start the prefill from cached_pos+1 instead of 0. if the cache is empty, it returns -1.
+if start >= n_tokens, cache extends beyond or exactly covers the new prompt. nothing left to prefill, can't reuse, so clear the cache and restart from 0. reuse only happens when the new prompt is longer than what's cached(start < n_tokens).
+
+curl -X POST http://localhost:8080/v1/completions \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "The meaning of life"}'

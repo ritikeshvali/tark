@@ -1,6 +1,7 @@
 #include "llama.h"
 #include "httplib.h"
 #include "nlohmann/json.hpp"
+#include <chrono>
 
 using json = nlohmann::json;
 
@@ -25,16 +26,25 @@ std::string run_inference(llama_model* model, llama_context* ctx, const std::str
     );
     tokens.resize(n_tokens);
 
-    llama_memory_clear(llama_get_memory(ctx) , false);
+    // llama_memory_clear(llama_get_memory(ctx) , false);
+    llama_pos cached_pos = llama_memory_seq_pos_max(llama_get_memory(ctx), 0);
+    int start = (cached_pos<0)? 0: cached_pos+1;
 
+    if (start >= n_tokens) {
+        llama_memory_clear(llama_get_memory(ctx), false);
+        start = 0;
+    }
+    
     llama_batch batch = llama_batch_init(512, 0, 1);
-    for (int i = 0; i < n_tokens; i++) {
-        batch.token[i] = tokens[i];
-        batch.pos[i] = i;
-        batch.n_seq_id[i] = 1;
-        batch.seq_id[i][0] = 0;
-        batch.logits[i] = (i == n_tokens - 1);
+    int batch_idx = 0;
+    for (int i = start; i < n_tokens; i++) {
+        batch.token[batch_idx] = tokens[i];
+        batch.pos[batch_idx] = i;
+        batch.n_seq_id[batch_idx] = 1;
+        batch.seq_id[batch_idx][0] = 0;
+        batch.logits[batch_idx] = (i == n_tokens - 1);
         batch.n_tokens++;
+        batch_idx++;
     }
 
     llama_decode(ctx, batch);
@@ -112,7 +122,13 @@ int main(int argc, char** argv) {
             return;
 
         std::string prompt = body["prompt"];
+        
+        auto t_start = std::chrono::steady_clock::now();
         std::string output = run_inference(model, ctx, prompt);
+        auto t_end = std::chrono::steady_clock::now();
+        double ms = std::chrono::duration<double, std::milli>(t_end - t_start).count();
+        fprintf(stdout, "inference: %.1f ms\n", ms);
+        fflush(stdout);
 
         json response = {
             {"id", "cmpl-1"},
@@ -149,17 +165,26 @@ int main(int argc, char** argv) {
             );
             tokens.resize(n_tokens);
 
-            llama_memory_clear(llama_get_memory(ctx) , false);
+            // llama_memory_clear(llama_get_memory(ctx) , false);
+            llama_pos cached_pos = llama_memory_seq_pos_max(llama_get_memory(ctx), 0);
+            int start = (cached_pos<0)? 0: cached_pos+1;
+
+            if (start>=n_tokens) {
+                llama_memory_clear(llama_get_memory(ctx), false);
+                start = 0;
+            }
 
             // we batch all the prompt tokens, uptil 512
             llama_batch batch = llama_batch_init(512, 0, 1);
-            for (int i=0; i<n_tokens; i++) {
-                batch.token[i] = tokens[i];
-                batch.pos[i] = i;
-                batch.n_seq_id[i] = 1;
-                batch.seq_id[i][0] = 0;
-                batch.logits[i] = (i == n_tokens-1);
+            int batch_idx = 0;
+            for (int i=start; i<n_tokens; i++) {
+                batch.token[batch_idx] = tokens[i];
+                batch.pos[batch_idx] = i;
+                batch.n_seq_id[batch_idx] = 1;
+                batch.seq_id[batch_idx][0] = 0;
+                batch.logits[batch_idx] = (i == n_tokens-1);
                 batch.n_tokens++;
+                batch_idx++;
             }
             // we do the prefil step when we call llama_decode
             llama_decode(ctx, batch);
