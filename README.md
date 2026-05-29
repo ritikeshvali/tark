@@ -15,12 +15,12 @@ in active development
 - single-request inference via llama.cpp
 - greedy decoding with GGUF model support
 - token streaming (SSE)
-
-## in progress
 - KV cache reuse across turns
 
-## planned capabilities
+## in progress
 - continuous batching
+
+## planned capabilities
 - prefix caching
 - benchmark harness
 
@@ -29,6 +29,7 @@ in active development
 - llama.cpp (engine)
 - cpp-httplib (HTTP)
 - nlohmann/json (request/response parsing)
+- chrono (time durations)
 
 ## running
 
