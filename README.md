@@ -14,12 +14,12 @@ in active development
 - HTTP server with POST /v1/completions endpoint
 - single-request inference via llama.cpp
 - greedy decoding with GGUF model support
-
-## in progress
 - token streaming (SSE)
 
-## planned capabilities
+## in progress
 - KV cache reuse across turns
+
+## planned capabilities
 - continuous batching
 - prefix caching
 - benchmark harness

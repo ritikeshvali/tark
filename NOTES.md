@@ -41,7 +41,8 @@ lets the decode step skip recomputing the full sequence each time. just look up 
 grows with sequence length. memory bottleneck in production serving.
 
 # SSE (server-sent events)
-one HTTP request, connection stays open, server pushes tokens as they're sampled.
+one HTTP request, connection stays open, server pushes tokens as they're sampled. the data is sent in chunks.
+first the prompt tokens get batched and processed with llama_decode, then the logits are sampled for the last token from this. then for each subsequent token, a 1-sized batch is created and processed and the data is sent to the datasink using sink.write. at the end we send the data chunk wiht "[DONE]".
 format: "data: {json}\n\n" per token, "data: [DONE]\n\n" at end.
 gives the ChatGPT typewriter effect.
 
