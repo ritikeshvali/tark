@@ -30,5 +30,32 @@ in active development
 - cpp-httplib (HTTP)
 - nlohmann/json (request/response parsing)
 
+## running
+
+**start the server**
+```bash
+mkdir build && cd build
+cmake .. -G "MinGW Makefiles"
+mingw32-make -j4
+./tark /path/to/model.gguf
+```
+
+**test endpoints**
+```bash
+# health check
+curl http://localhost:8080/health
+
+# single response
+curl -X POST http://localhost:8080/v1/completions \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "The meaning of life is"}'
+
+# streaming
+curl -X POST http://localhost:8080/v1/completions/stream \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "The meaning of life is"}' \
+  --no-buffer
+```
+
 ## notes
 design notes and implementation details live in [NOTES.md](./NOTES.md)
