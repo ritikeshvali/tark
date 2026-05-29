@@ -4,6 +4,16 @@
 
 using json = nlohmann::json;
 
+// util - validate prompt request
+bool validate_request (const json& body, httplib::Response& res) {
+    if (body.is_discarded() || !body.contains("prompt")) {
+        res.status = 400;
+        res.set_content("{\"error\":\"prompt required\"}", "application/json");
+        return false;
+    }
+    return true;
+}
+
 // this has all the inference code
 std::string run_inference(llama_model* model, llama_context* ctx, const std::string& prompt) {
     const llama_vocab* vocab = llama_model_get_vocab(model);
@@ -94,13 +104,10 @@ int main(int argc, char** argv) {
         res.set_content("{\"status\":\"ok\"}", "application/json");
     });
 
-    svr.Post("/v1/completions", [&](const httplib::Request& req, httplib::Response res) {
+    svr.Post("/v1/completions", [&](const httplib::Request& req, httplib::Response& res) {
         auto body = json::parse(req.body, nullptr, false);
-        if (body.is_discarded() || !body.contains("prompt")) {
-            res.status = 400;
-            res.set_content("{\"error\":\"prompt required\"}", "application/json");
+        if (!validate_request(body, res))
             return;
-        }
 
         std::string prompt = body["prompt"];
         std::string output = run_inference(model, ctx, prompt);
@@ -110,12 +117,95 @@ int main(int argc, char** argv) {
             {"object", "text_completion"},
             {"model", "tark"},
             {"choices", json::array({{
-                {"text", "output"},
+                {"text", output},
                 {"finish_reason", "stop"}
             }})}
         };
 
         res.set_content(response.dump(), "application/json");
+    });
+
+    svr.Post("/v1/completions/stream", [&](const httplib::Request& req, httplib::Response& res) {
+        auto body = json::parse(req.body, nullptr, false);
+        if (!validate_request(body, res))
+            return;
+
+        std::string prompt = body["prompt"];
+
+        res.set_header("Content-Type", "text/event-stream");
+        res.set_header("Cache-Control", "no-cache");
+        res.set_header("Connection", "keep-alive");
+
+        res.set_chunked_content_provider("text/event-stream",
+        [&, prompt](size_t, httplib::DataSink& sink) {
+            const llama_vocab* vocab = llama_model_get_vocab(model);
+
+            std::vector<llama_token> tokens(prompt.size()+32);
+            int n_tokens = llama_tokenize(
+                vocab, prompt.c_str(), prompt.size(),
+                tokens.data(), tokens.size(), true, false
+            );
+            tokens.resize(n_tokens);
+
+            // we batch all the prompt tokens, uptil 512
+            llama_batch batch = llama_batch_init(512, 0, 1);
+            for (int i=0; i<n_tokens; i++) {
+                batch.token[i] = tokens[i];
+                batch.pos[i] = i;
+                batch.n_seq_id[i] = 1;
+                batch.seq_id[i][0] = 0;
+                batch.logits[i] = (i == n_tokens-1);
+                batch.n_tokens++;
+            }
+            // we do the prefil step when we call llama_decode
+            llama_decode(ctx, batch);
+
+            // sampling selects the next token from logits after a decode call
+            auto sparams = llama_sampler_chain_default_params();
+            // there's many strategies like greedy, temperature, top-p, top-k
+            llama_sampler* sampler = llama_sampler_chain_init(sparams);
+            // we choose greedy strategy here
+            // in prod we chain strategies, eg: temp first, then top-k, then pick
+            llama_sampler_chain_add(sampler, llama_sampler_init_greedy());
+
+            char piece[128];
+            int n_cur = n_tokens;
+            int n_max = n_tokens + 128;
+
+            while (n_cur < n_max) {
+                // -1 because after prefill, only the last token had logits created for it
+                llama_token tok = llama_sampler_sample(sampler, ctx, -1);
+                if (llama_vocab_is_eog(vocab, tok))
+                    break;
+
+                    int n = llama_token_to_piece(
+                        vocab, tok, piece, sizeof(piece), 0, false);
+                    if (n>0) {
+                        piece[n] = '\0';
+                        json event = {{"token", std::string(piece)}};
+                        std::string data = "data: " + event.dump() + "\n\n";
+                        sink.write(data.c_str(), data.size());
+                    }
+
+                    llama_batch_free(batch);
+                    batch = llama_batch_init(1, 0, 1);
+                    batch.token[0] = tok;
+                    batch.pos[0] = n_cur;
+                    batch.n_seq_id[0] = 1;
+                    batch.seq_id[0][0] = 0;
+                    batch.logits[0] = true;
+                    batch.n_tokens = 1;
+                    llama_decode(ctx, batch);
+                    n_cur++;
+            }
+
+            std::string done = "data: [DONE]\n\n";
+            sink.write(done.c_str(), done.size());
+
+            llama_sampler_free(sampler);
+            llama_batch_free(batch);
+            return true;
+        });
     });
 
     fprintf(stdout, "tark listening on http://0.0.0.0:8080\n");
