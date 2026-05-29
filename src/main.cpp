@@ -25,6 +25,8 @@ std::string run_inference(llama_model* model, llama_context* ctx, const std::str
     );
     tokens.resize(n_tokens);
 
+    llama_memory_clear(llama_get_memory(ctx) , false);
+
     llama_batch batch = llama_batch_init(512, 0, 1);
     for (int i = 0; i < n_tokens; i++) {
         batch.token[i] = tokens[i];
@@ -44,7 +46,7 @@ std::string run_inference(llama_model* model, llama_context* ctx, const std::str
     std::string result;
     char piece[128];
     int n_cur = n_tokens;
-    int n_max = 128;
+    int n_max = n_tokens + 128;
 
     while (n_cur < n_max) {
         llama_token tok =  llama_sampler_sample(sampler, ctx, -1);
@@ -147,6 +149,8 @@ int main(int argc, char** argv) {
             );
             tokens.resize(n_tokens);
 
+            llama_memory_clear(llama_get_memory(ctx) , false);
+
             // we batch all the prompt tokens, uptil 512
             llama_batch batch = llama_batch_init(512, 0, 1);
             for (int i=0; i<n_tokens; i++) {
@@ -204,7 +208,7 @@ int main(int argc, char** argv) {
 
             llama_sampler_free(sampler);
             llama_batch_free(batch);
-            return true;
+            return false;
         });
     });
 
