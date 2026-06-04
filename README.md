@@ -7,8 +7,21 @@ minimal, deterministic, and built close to the metal. focused on correctness, pe
 ## why "tark"?
 tark means logic or reasoning, deriving outputs through structured steps. this system does the same, executing inference as a sequence of explicit, controllable operations.
 
-## status
-in active development
+## how it works
+HTTP thread       ->  submit request to scheduler
+scheduler thread  ->  one llama_decode per iteration across all active requests
+                  ->  push sampled tokens to per-request queue
+HTTP thread       ->  stream tokens to client via SSE
+
+## demo
+
+**server startup:**
+
+![server](assets/server.gif)
+
+**concurrent requests, tokens interleaving:**
+
+![requests](assets/requests.gif)
 
 ## current capabilities
 - HTTP server with POST /v1/completions endpoint
@@ -16,12 +29,12 @@ in active development
 - greedy decoding with GGUF model support
 - token streaming (SSE)
 - KV cache reuse across turns
-
-## in progress
 - continuous batching
 
-## planned capabilities
+## in progress
 - prefix caching
+
+## planned capabilities
 - benchmark harness
 
 ## stack
@@ -57,6 +70,10 @@ curl -X POST http://localhost:8080/v1/completions/stream \
   -d '{"prompt": "The meaning of life is"}' \
   --no-buffer
 ```
+
+## docs
+- [setup and usage](docs/SETUP.md)
+- [design decisions](docs/DESIGN.md)
 
 ## notes
 design notes and implementation details live in [NOTES.md](./NOTES.md)
