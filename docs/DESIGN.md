@@ -135,3 +135,30 @@ this is what makes multiple requests share one context without colliding.
 context has fixed size (n_ctx = 2048). each active request consumes tokens.
 scheduler needs to track total tokens in flight and cap active requests.
 naive cap: `max_active = n_ctx / avg_expected_tokens`. tune later with benchmarks.
+
+## code architecture refactoring
+
+**decision:** split main.cpp into inference, server, scheduler and main files
+
+**why:** main.cpp was becoming too complicated. as of now (before the refactor), it
+had HTTP handlers, inference logic, and model setup. i'm planning on adding continuous
+batching, which would make the code even more complex to understand and extend.
+
+**file responsibilities:**
+- inference.h/cpp: this will have all the interaction with llama.cpp and will be the
+only file to do so. it'll have tokenize, build batch, prefill, decode, sample, etc
+calls. will just have pure functions, no HTTP calls and no threading here.
+- server.h/cpp: this will have all httplib code. it'll register endpoints, parse JSON,
+validate the requests, build responses and so on. it calls the scheduler now, not
+inference directly.
+- scheduler.h/cpp: it has the Request struct, the Scheduler class, and the background
+decode loop. it owns the pending queue, the active list, the per-request token queues,
+and threading.
+- main.h/cpp: it handles the startup of tark. contains init llama call, load model,
+create scheduler, register routes, and listen calls. kind of like a table of contents.
+
+**dependency direction:**
+main -> scheduler -> inference -> llama.cpp
+main -> server -> scheduler
+
+also, this refactoring will improve the testability for inference logic.
