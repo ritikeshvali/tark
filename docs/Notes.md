@@ -54,6 +54,12 @@ simplest possible sampler. production uses temperature + top-p instead.
 llama_memory_seq_pos_max returns the highest cached position for seq 0. we start the prefill from cached_pos+1 instead of 0. if the cache is empty, it returns -1.
 if start >= n_tokens, cache extends beyond or exactly covers the new prompt. nothing left to prefill, can't reuse, so clear the cache and restart from 0. reuse only happens when the new prompt is longer than what's cached(start < n_tokens).
 
-curl -X POST http://localhost:8080/v1/completions \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "The meaning of life"}'
+## prefix caching
+
+goal: cache KV entries for a shared prefix once, reuse across requests. new requests copy prefix KV entries via llama_memory_seq_cp() and skip prefilling those tokens.
+
+problem: seq_cp() asserted "only supported for full KV buffers" on partial range copies, i.e., when i filled a seq with just 12 tokens out of 256. by default, each seq_id gets its own separate memory buffer. copying between two different buffers requires moving actual memory bytes, and llama.cpp only implements this for full buffer copies. partial ranges (p1 < buffer_size) fail the is_full check in llama-kv-cache.cpp.
+
+fix: cparams.kv_unified = true puts all sequences into one shared buffer. seq_cp between sequences in the same buffer is now just a metadata update, no memory movement, no is_full check, partial ranges work.
+
+important lesson: read the source when hitting a library assert. the is_full check only exists on the cross-buffer path(between 2 different streams). forcing a shared buffer makes it disappear.

@@ -13,3 +13,9 @@ papers and blog posts i read to learn stuff
 - what i read: continuous batching section, skipped pagedattention
 - key ideas: static vs continuous batching, variable output lengths kill gpu utilization
 - relevant to: continuous batching
+
+## efficient memory management for large language model serving with pagedattention
+- url: https://arxiv.org/abs/2309.06180
+- what i read: section 4.2 (KV cache manager), section 4.4 (shared prefix), section 6.4 (shared prefix evaluation)
+- key ideas: paged KV cache inspired by OS virtual memory, prefix KV blocks shared across requests via copy-on-write, block table maps logical to physical KV blocks
+- relevant to: prefix caching

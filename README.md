@@ -30,12 +30,18 @@ HTTP thread       ->  stream tokens to client via SSE
 - token streaming (SSE)
 - KV cache reuse across turns
 - continuous batching
-
-## in progress
 - prefix caching
 
+## in progress
+- benchmark harness vs llama.cpp server (throughput, latency, tokens/sec)
+
 ## planned capabilities
-- benchmark harness
+- speculative decoding
+- per-request latency logging (TTFT, tokens/sec)
+- /v1/metrics endpoint
+- temperature + top-p sampling
+- /v1/chat/completions endpoint (OpenAI chat format)
+- request cancellation on client disconnect
 
 ## stack
 - C++17
@@ -72,8 +78,7 @@ curl -X POST http://localhost:8080/v1/completions/stream \
 ```
 
 ## docs
-- [setup and usage](docs/SETUP.md)
-- [design decisions](docs/DESIGN.md)
-
-## notes
-design notes and implementation details live in [NOTES.md](./NOTES.md)
+- build instructions and usage is in [SETUP.md](docs/SETUP.md)
+- architectural decisions and tradeoffs are in [DESIGN.md](docs/DESIGN.md)
+- implementation notes and lessons learned live in [NOTES.md](docs/NOTES.md)
+- papers and blogs referenced while building found here [REFERENCES.md](docs/REFERENCES.md)

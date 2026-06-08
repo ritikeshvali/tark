@@ -162,3 +162,27 @@ main -> scheduler -> inference -> llama.cpp
 main -> server -> scheduler
 
 also, this refactoring will improve the testability for inference logic.
+
+## prefix caching
+
+### goal
+cache KV entries for a shared prefix once at startup. new requests that share the prefix copy those entries instead of reprocessing the prefix tokens.
+
+### implementation
+prefix stored on seq_id 0 via set_prefix() at startup. new requests call llama_memory_seq_cp() to copy prefix KV entries from seq_id 0 to their own seq_id, then only prefill the non-prefix portion.
+
+### problem hit
+seq_cp() asserted "only supported for full KV buffers" on partial range copies. by default, each seq_id gets its own separate memory buffer. copying between
+two different buffers is a cross-stream copy, which requires moving actual memory bytes. llama.cpp only implements cross-stream copies for full buffers. partial ranges (p1 < buffer_size) fail the is_full check in llama-kv-cache.cpp.
+
+### fix
+cparams.kv_unified = true in main.cpp. puts all sequences into one shared buffer. seq_cp between sequences in the same buffer is now a metadata-only operation, just marks cells as belonging to the destination seq_id. no memory movement, no is_full check, partial ranges work.
+
+### tradeoff
+with separate streams, each seq_id has a dedicated fixed-size chunk. with unified, all sequences compete for one shared pool. for tark this is better since prefix slots are reused across requests rather than locked per-sequence.
+
+### rejected
+padding seq_id 0 with dummy tokens to satisfy the is_full check. hacky, wastes KV slots, doesn't scale.
+
+### lesson
+when hitting a library assert, read the source. the is_full check only exists on the cross-stream path (llama-kv-cache.cpp). same-stream path has no restriction. kv_unified forces same-stream.
