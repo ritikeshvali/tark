@@ -1,5 +1,4 @@
 #pragma once
-#include "llama.cpp/src/llama-vocab.h"
 #include "llama.h"
 #include <memory>
 #include <vector>
@@ -24,11 +23,13 @@ struct Request {
 class Scheduler {
     std::queue<std::shared_ptr<Request>> pending_queue;
     std::vector<std::shared_ptr<Request>> active_list;
+    std::vector<llama_token> prefix_tokens;
     std::mutex pending_mtx;
     llama_model* model;
     llama_context* ctx;
     const llama_vocab* vocab;
     int next_seq_id_counter;
+    int prefix_length = 0;
 
 public:
     std::shared_ptr<Request> submit(const std::string& prompt);
@@ -37,4 +38,6 @@ public:
 
     Scheduler(llama_model* model, llama_context* ctx, const llama_vocab* vocab)
     : model(model), ctx(ctx), vocab(vocab), next_seq_id_counter(0) {}
+
+    void set_prefix(const std::string& prefix_text);
 };

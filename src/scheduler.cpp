@@ -12,7 +12,8 @@ std::shared_ptr<Request> Scheduler::submit(const std::string& prompt) {
 
     auto req = std::make_shared<Request>();
     req->prompt_tokens = tokens;
-    req->seq_id = next_seq_id_counter++;
+    req->seq_id = next_seq_id_counter+1;
+    next_seq_id_counter++;
     req->n_pos = 0;
     req->done = false;
     req->max_tokens = 128;
@@ -50,20 +51,29 @@ void Scheduler::run() {
             while(!pending_queue.empty()) {
                 auto req = pending_queue.front();
                 pending_queue.pop();
+                if (prefix_length>0 && req->prompt_tokens.size()>=prefix_length &&
+                    std::equal(prefix_tokens.begin(), prefix_tokens.end(), req->prompt_tokens.begin())) {
+                        //copy prefix kv cache from seq_id 0 to this req's seq_id
+                        llama_memory_seq_cp(llama_get_memory(ctx), 0, req->seq_id, 0, prefix_length);
+                        // just prefill the non-prefix part
+                        llama_batch batch = llama_batch_init(req->prompt_tokens.size()-prefix_length, 0, 1);
+                        run_prefill(ctx, batch, req->prompt_tokens, prefix_length, req->prompt_tokens.size(), req->seq_id);
+                        req->n_pos = req->prompt_tokens.size();
+                        llama_batch_free(batch);
+                } else {
+                    llama_batch batch = llama_batch_init(req->prompt_tokens.size(), 0, 1);
+                    run_prefill(
+                        this->ctx,
+                        batch,
+                        req->prompt_tokens,
+                        0,
+                        req->prompt_tokens.size(),
+                        req->seq_id
+                    );
+                    req->n_pos = req->prompt_tokens.size();
 
-                llama_batch batch = llama_batch_init(req->prompt_tokens.size(), 0, 1);
-
-                run_prefill(
-                    this->ctx,
-                    batch,
-                    req->prompt_tokens,
-                    0,
-                    req->prompt_tokens.size(),
-                    req->seq_id
-                );
-                req->n_pos = req->prompt_tokens.size();
-
-                llama_batch_free(batch);
+                    llama_batch_free(batch);
+                }
                 this->active_list.push_back(req);
             }
         }
@@ -106,3 +116,12 @@ void Scheduler::run() {
         llama_batch_free(batch);
     }
 }
+
+ void Scheduler::set_prefix(const std::string& prefix_text) {
+    prefix_tokens = tokenize(vocab, prefix_text);
+    prefix_length = prefix_tokens.size();
+
+    llama_batch batch = llama_batch_init(prefix_length, 0, 1);
+    run_prefill(ctx, batch, prefix_tokens, 0, prefix_length, 0);
+    llama_batch_free(batch);
+ }

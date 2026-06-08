@@ -2,6 +2,7 @@
 #include "llama.h"
 #include "scheduler.h"
 #include "server.h"
+#include <cstdio>
 #include <thread>
 
 int main(int argc, char** argv) {
@@ -23,6 +24,7 @@ int main(int argc, char** argv) {
     cparams.n_ctx = 2048;
     cparams.n_batch = 512;
     cparams.n_seq_max = 8;
+    cparams.kv_unified = true;
     llama_context* ctx = llama_init_from_model(model, cparams);
     if (!ctx) {
         fprintf(stderr, "Failed to create context");
@@ -32,6 +34,12 @@ int main(int argc, char** argv) {
     const llama_vocab* vocab = llama_model_get_vocab(model);
 
     Scheduler scheduler(model, ctx, vocab);
+
+    if (argc >= 3) {
+        std::string prefix = argv[2];
+        scheduler.set_prefix(prefix);
+        fprintf(stdout, "prefix cached: %s\n", prefix.c_str());
+    }
 
     std::thread scheduler_thread([&]() { scheduler.run(); });
     scheduler_thread.detach();
