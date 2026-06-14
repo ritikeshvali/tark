@@ -75,3 +75,5 @@ i accidentally wrote the default endpoint as /v1/completions in benchmark instea
 #### note
 silent failures are not good. in the above exception handling, i had just added the benchmark file so didn't take much time otherwise would've taken me a lot of time to figure out what the file is doing, then why this is wrong.
 we should use exception handling as much as we can.
+
+compare.py: last-write-wins per concurrency level, n/a for missing entries instead of crashing.

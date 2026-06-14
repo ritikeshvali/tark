@@ -191,6 +191,7 @@ when hitting a library assert, read the source. the is_full check only exists on
 
 added it to measure TTFT and total latency under concurrent load so i can compare
 tark vs llama.cpp server side by side as architectural changes are made.
+compare.py reads both files, takes latest entry per concurrency level, prints side-by-side table.
 
 ### stack
 Python, httpx (async HTTP client), asyncio for concurrent requests.
