@@ -55,30 +55,39 @@ def main():
     parser.add_argument("--url", default="http://localhost:8080/v1/completions/stream")
     parser.add_argument("--concurrency", type=int, default=4)
     parser.add_argument("--reason", default="unspecified")
+    parser.add_argument("--runs", type=int, default=1)
     parser.add_argument("--prompt", default="The history of the Roman Empire is")
 
     args = parser.parse_args()
 
-    print(f"Running benchmark: {args.concurrency} concurrent requests -> {args.url}")
-    results = asyncio.run(run_benchmark(args.url, args.prompt, args.concurrency))
+    print(f"Running benchmark: {args.concurrency} concurrent requests x {args.runs} runs -> {args.url}")
 
-    ok = [r for r in results if isinstance(r, dict) and "error" not in r]
-    failed = len(results) - len(ok)
+    all_entries = []
+    for i in range(args.runs):
+        print(f"Run {i+1}/{args.runs}...")
+        results = asyncio.run(run_benchmark(args.url, args.prompt, args.concurrency))
+        ok = [r for r in results if isinstance(r, dict) and "error" not in r]
+        failed = len(results) - len(ok)
+        if ok:
+            all_entries.append((ok, failed))
 
-    if not ok:
-        print("All requests failed.")
+    if not all_entries:
+        print("All runs failed.")
         return
-    
-    ttfts = [r["ttft_ms"] for r in ok if r["ttft_ms"] is not None]
-    totals = [r["total_ms"] for r in ok]
+
+    all_ok = [r for ok, _ in all_entries for r in ok]
+    total_failed = sum(f for _, f in all_entries)
+
+    ttfts = [r["ttft_ms"] for r in all_ok if r["ttft_ms"] is not None]
+    totals = [r["total_ms"] for r in all_ok]
 
     entry = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "server": args.server,
         "reason": args.reason,
         "concurrency": args.concurrency,
-        "requests_ok": len(ok),
-        "requests_failed": failed,
+        "requests_ok": len(all_ok),
+        "requests_failed": total_failed,
         "mean_ttft_ms": round(mean(ttfts), 2) if ttfts else None,
         "median_ttft_ms": round(median(ttfts), 2) if ttfts else None,
         "mean_total_ms": round(mean(totals), 2),

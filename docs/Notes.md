@@ -78,18 +78,12 @@ we should use exception handling as much as we can.
 
 compare.py: last-write-wins per concurrency level, n/a for missing entries instead of crashing.
 
-### benchmark run at concurrency 4
+### benchmark run at concurrency 4 (3 runs x 4 concurrent, stable)
 
-tark vs llamacpp baseline at concurrency 4 (both running, same machine):
-- tark: 2039ms TTFT, 28.9s total
-- llamacpp: 1143ms TTFT, 18.8s total
+tark: 991ms TTFT, 16.5s total
+llamacpp: 717ms TTFT, 14.4s total
+llamacpp is ~28% faster on TTFT, ~13% faster on total latency.
 
-tark solo: 1730ms TTFT, 27.1s total -- gap persists even without contention.
-memory usage identical (~1.1GB each), so not a resource difference.
+root cause: tark calls llama_batch_init(active_list.size()) so batch shape changes as requests join/leave. llama.cpp rebuilds compute graph on every shape change. llamacpp server pads to fixed n_parallel=4, graph shape stays constant, reused every decode step ("graphs reused = 124" in logs).
 
-root cause confirmed: tark calls llama_batch_init(active_list.size()) so batch shape
-changes as requests join/leave. llama.cpp rebuilds compute graph on every shape change.
-llamacpp server pads to fixed n_parallel=4, graph shape stays constant, reused every
-decode step ("graphs reused = 124" in logs).
-
-we can fix it by setting init batch to n_parallel size always, pad inactive slots
+to fix it, we will have to init batch to n_parallel size always, pad inactive slots
