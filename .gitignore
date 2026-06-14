@@ -71,3 +71,4 @@ Testing/
 build/
 *.gguf
 .vscode
+local.sh
