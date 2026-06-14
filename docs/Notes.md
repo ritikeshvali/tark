@@ -63,3 +63,15 @@ problem: seq_cp() asserted "only supported for full KV buffers" on partial range
 fix: cparams.kv_unified = true puts all sequences into one shared buffer. seq_cp between sequences in the same buffer is now just a metadata update, no memory movement, no is_full check, partial ranges work.
 
 important lesson: read the source when hitting a library assert. the is_full check only exists on the cross-buffer path(between 2 different streams). forcing a shared buffer makes it disappear.
+
+## benchmark harness
+
+measure TTFT and total latency under concurrent load using async HTTP. asyncio.gather fires N requests simultaneously, each tracks time to first SSE token.
+
+in tark: baseline on CPU + TinyLlama: 1.38s TTFT, 16.7s total at concurrency 4.
+
+i accidentally wrote the default endpoint as /v1/completions in benchmark instead of the actual one, /v1/completions/stream and kept getting 'All requests failed' error message until i realised my mistake. i've added error handling for wrong url endpoint and server not running in the benchmark harness now.
+
+#### note
+silent failures are not good. in the above exception handling, i had just added the benchmark file so didn't take much time otherwise would've taken me a lot of time to figure out what the file is doing, then why this is wrong.
+we should use exception handling as much as we can.

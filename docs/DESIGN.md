@@ -186,3 +186,36 @@ padding seq_id 0 with dummy tokens to satisfy the is_full check. hacky, wastes K
 
 ### lesson
 when hitting a library assert, read the source. the is_full check only exists on the cross-stream path (llama-kv-cache.cpp). same-stream path has no restriction. kv_unified forces same-stream.
+
+## benchmark harness
+
+added it to measure TTFT and total latency under concurrent load so i can compare
+tark vs llama.cpp server side by side as architectural changes are made.
+
+### stack
+Python, httpx (async HTTP client), asyncio for concurrent requests.
+httpx over aiohttp: cleaner API, actively maintained, same performance.
+
+### output format
+JSONL (one JSON object per run, appended to file). human-readable, git-diffable,
+trivially extensible, same convention vLLM uses.
+
+i take which server we are running the benchmark for, in the arguments, so a jsonl
+output file is created for each server (only tark, and llama-server options are there, for now)
+compare.py reads both, takes latest entry per concurrency level, prints side-by-side table.
+
+### reason field
+each run includes a reason field: a short note on why the benchmark was run.
+passed via --reason flag, defaults to "unspecified". helps correlate performance
+changes with architectural decisions when reviewing results later.
+
+### error handling
+two distinct failure modes, handled separately:
+- ConnectError: server not running, connection refused
+- 404: server running but wrong endpoint
+
+previously both showed "All requests failed" with no distinction.
+
+### rejected
+SQLite: binary format, needs sqlite3 to inspect manually. JSONL is simpler and sufficient.
+Avro: schema registry overhead, not human readable, overkill for a benchmark tool.
