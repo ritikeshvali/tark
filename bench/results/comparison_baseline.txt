@@ -1,0 +1,7 @@
+  conc metric                       tark     llamacpp
+-----------------------------------------------------
+     4 mean TTFT (ms)            1730.41      1143.29
+     4 median TTFT (ms)          1727.94      1107.21
+     4 mean total (ms)          27121.55     18843.19
+     4 median total (ms)        27119.33     23027.61
+       reason               baseline-solo     baseline

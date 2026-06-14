@@ -1,0 +1,1 @@
+{"timestamp": "2026-06-14T15:29:14.112217+00:00", "server": "llamacpp", "reason": "baseline", "concurrency": 4, "requests_ok": 4, "requests_failed": 0, "mean_ttft_ms": 1143.29, "median_ttft_ms": 1107.21, "mean_total_ms": 18843.19, "median_total_ms": 23027.61}
