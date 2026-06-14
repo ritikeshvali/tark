@@ -1,0 +1,1 @@
+{"timestamp": "2026-06-14T11:56:29.750791+00:00", "server": "tark", "reason": "testing mean vs median fix", "concurrency": 4, "requests_ok": 4, "requests_failed": 0, "mean_ttft_ms": 1046.87, "median_ttft_ms": 1044.8, "mean_total_ms": 16229.33, "median_total_ms": 16227.46}

@@ -19,18 +19,28 @@ async def send_request(client: httpx.AsyncClient, url: str, prompt: str) -> dict
     ttft = None
     start = time.perf_counter()
 
-    async with client.stream("POST", url, json=payload, timeout=60.0) as resp:
-        resp.raise_for_status()
-        async for line in resp.aiter_lines():
-            if not line.startswith("data:"):
-                continue
-            data = line[len("data:"):].strip()
-            if data == "[DONE]":
-                break
-            if ttft is None:
-                # in ms
-                ttft = (time.perf_counter() - start)*1000
-
+    try:
+        async with client.stream("POST", url, json=payload, timeout=60.0) as resp:
+            if resp.status_code == 404:
+                print(f"404: wrong endpoint: {url}")
+                return {"error": "wrong_endpoint"}
+            resp.raise_for_status()
+            async for line in resp.aiter_lines():
+                if not line.startswith("data:"):
+                    continue
+                data = line[len("data:"):].strip()
+                if data == "[DONE]":
+                    break
+                if ttft is None:
+                    # in ms
+                    ttft = (time.perf_counter() - start)*1000
+    except httpx.ConnectError:
+        print(f"Connection refused: is tark running on {url}?")
+        return {"error": "server_not_running"}
+    except httpx.HTTPStatusError as e:
+        print(f"HTTP error {e.response.status_code}: {url}")
+        return {"error": f"http_{e.response.status_code}"}
+    
     total = (time.perf_counter() - start)*1000
     return {"ttft_ms": ttft, "total_ms": total}
 
@@ -52,7 +62,7 @@ def main():
     print(f"Running benchmark: {args.concurrency} concurrent requests -> {args.url}")
     results = asyncio.run(run_benchmark(args.url, args.prompt, args.concurrency))
 
-    ok = [r for r in results if isinstance(r, dict)]
+    ok = [r for r in results if isinstance(r, dict) and "error" not in r]
     failed = len(results) - len(ok)
 
     if not ok:
