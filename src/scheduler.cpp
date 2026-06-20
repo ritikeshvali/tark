@@ -53,9 +53,7 @@ void Scheduler::run() {
                 pending_queue.pop();
                 if (prefix_length>0 && req->prompt_tokens.size()>=prefix_length &&
                     std::equal(prefix_tokens.begin(), prefix_tokens.end(), req->prompt_tokens.begin())) {
-                        //copy prefix kv cache from seq_id 0 to this req's seq_id
                         llama_memory_seq_cp(llama_get_memory(ctx), 0, req->seq_id, 0, prefix_length);
-                        // just prefill the non-prefix part
                         llama_batch batch = llama_batch_init(req->prompt_tokens.size()-prefix_length, 0, 1);
                         run_prefill(ctx, batch, req->prompt_tokens, prefix_length, req->prompt_tokens.size(), req->seq_id);
                         req->n_pos = req->prompt_tokens.size();
@@ -71,7 +69,6 @@ void Scheduler::run() {
                         req->seq_id
                     );
                     req->n_pos = req->prompt_tokens.size();
-
                     llama_batch_free(batch);
                 }
                 this->active_list.push_back(req);
@@ -84,7 +81,7 @@ void Scheduler::run() {
         }
 
         llama_batch batch = llama_batch_init(active_list.size(), 0, 1);
-        for (int i=0; i<active_list.size(); i++) {
+        for (int i=0; i<(int)active_list.size(); i++) {
             auto& req = active_list[i];
             batch.token[i] = req->output_tokens.empty()
                             ? req->prompt_tokens.back()
@@ -96,17 +93,21 @@ void Scheduler::run() {
             batch.n_tokens++;
         }
 
-        llama_decode(this->ctx, batch);
+        if (llama_decode(this->ctx, batch) != 0) {
+            fprintf(stderr, "llama_decode failed, skipping iteration\n");
+            llama_batch_free(batch);
+            continue;
+        }
 
-        for (int i=0; i<active_list.size(); i++) {
+        for (int i=0; i<(int)active_list.size(); i++) {
             auto& req = active_list[i];
-            llama_token tok =  llama_sampler_sample(sampler, this->ctx, i);
-            
+            llama_token tok = llama_sampler_sample(sampler, this->ctx, i);
+
             {
                 std::lock_guard<std::mutex> lock(req->mtx);
                 req->token_queue.push(tok);
             }
-            req->cv.notify_one();   // only one HTTP thread waits per request
+            req->cv.notify_one();
             req->n_pos++;
             req->output_tokens.push_back(tok);
             if (llama_vocab_is_eog(vocab, tok) || (int)req->output_tokens.size() >= req->max_tokens) {
@@ -117,11 +118,11 @@ void Scheduler::run() {
     }
 }
 
- void Scheduler::set_prefix(const std::string& prefix_text) {
+void Scheduler::set_prefix(const std::string& prefix_text) {
     prefix_tokens = tokenize(vocab, prefix_text);
     prefix_length = prefix_tokens.size();
 
     llama_batch batch = llama_batch_init(prefix_length, 0, 1);
     run_prefill(ctx, batch, prefix_tokens, 0, prefix_length, 0);
     llama_batch_free(batch);
- }
+}

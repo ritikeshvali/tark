@@ -70,6 +70,8 @@ def main():
         failed = len(results) - len(ok)
         if ok:
             all_entries.append((ok, failed))
+        if i < args.runs - 1:
+            time.sleep(2)
 
     if not all_entries:
         print("All runs failed.")
