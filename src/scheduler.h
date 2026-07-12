@@ -30,14 +30,18 @@ class Scheduler {
     const llama_vocab* vocab;
     int next_seq_id_counter;
     int prefix_length = 0;
+    llama_model *draft_model;
+    llama_context *draft_ctx;
 
 public:
     std::shared_ptr<Request> submit(const std::string& prompt);
     void run();
     const llama_vocab* get_vocab() const { return vocab; }
 
-    Scheduler(llama_model* model, llama_context* ctx, const llama_vocab* vocab)
-    : model(model), ctx(ctx), vocab(vocab), next_seq_id_counter(0) {}
+    Scheduler(llama_model* model, llama_context* ctx, const llama_vocab* vocab,
+    llama_model* draft_model = nullptr, llama_context* draft_ctx = nullptr)
+    : model(model), ctx(ctx), vocab(vocab), next_seq_id_counter(0),
+    draft_model(draft_model), draft_ctx(draft_ctx) {}
 
     void set_prefix(const std::string& prefix_text);
 };

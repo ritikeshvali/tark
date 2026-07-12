@@ -5,6 +5,11 @@ source "$TARK_DIR/.env"
 
 start_server() {
     cd "$TARK_DIR/build"
+    ./tark.exe "$TARGET_MODEL" "$DRAFT_MODEL"
+}
+
+start_server_tinyllama() {
+    cd "$TARK_DIR/build"
     ./tark.exe "$MODEL"
 }
 
@@ -25,7 +30,3 @@ bench_llamacpp() {
         --concurrency 4 \
         --reason "${1:-baseline}" "${@:2}"
 }
-
-# run an instance of msys2 mingw64
-# run - source local.sh
-# then run the func needed - start_server/start_llamacpp
