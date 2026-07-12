@@ -28,9 +28,14 @@ std::shared_ptr<Request> Scheduler::submit(const std::string& prompt) {
 
 void Scheduler::run() {
     auto sparams = llama_sampler_chain_default_params();
+
     llama_sampler* sampler = llama_sampler_chain_init(sparams);
-    llama_sampler_chain_add(sampler, llama_sampler_init_penalties(64, 1.1f, 0.0f, 0.0f));
-    llama_sampler_chain_add(sampler, llama_sampler_init_greedy());  
+    llama_sampler_chain_add(sampler, llama_sampler_init_penalties(64, 1.3f, 0.0f, 0.0f));
+    llama_sampler_chain_add(sampler, llama_sampler_init_greedy());
+
+    llama_sampler* draft_sampler = llama_sampler_chain_init(sparams);
+    llama_sampler_chain_add(draft_sampler, llama_sampler_init_penalties(64, 1.3f, 0.0f, 0.0f));
+    llama_sampler_chain_add(draft_sampler, llama_sampler_init_greedy());
 
     while(true) {
         active_list.erase(
@@ -101,8 +106,6 @@ void Scheduler::run() {
 
                 llama_batch verify_batch = llama_batch_init(N_DRAFT + 1, 0, 1);
 
-                fprintf(stderr, "seed: seq=%d pos=%d\n", req->seq_id, req->n_pos);
-                // seed: decode last_tok at n_pos to get first draft logits
                 llama_batch seed = llama_batch_init(1, 0, 1);
                 seed.token[0]     = last_tok;
                 seed.pos[0]       = req->n_pos;
@@ -119,13 +122,10 @@ void Scheduler::run() {
                 }
                 llama_batch_free(seed);
 
-                fprintf(stderr, "draft seed ok, sampling...\n");
-                llama_token draft_tok = llama_sampler_sample(sampler, draft_ctx, 0);
-                fprintf(stderr, "draft tok sampled: %d\n", draft_tok);
+                llama_token draft_tok = llama_sampler_sample(draft_sampler, draft_ctx, 0);
                 draft_tokens.push_back(draft_tok);
 
                 for (int d = 1; d < N_DRAFT; d++) {
-                    fprintf(stderr, "drafting d=%d\n", d);
                     llama_batch db = llama_batch_init(1, 0, 1);
                     db.token[0]     = draft_tok;
                     db.pos[0]       = req->n_pos + d;
@@ -134,19 +134,14 @@ void Scheduler::run() {
                     db.logits[0]    = true;
                     db.n_tokens     = 1;
                     if (llama_decode(draft_ctx, db) != 0) {
-                        fprintf(stderr, "draft decode failed at d=%d\n", d);
                         llama_batch_free(db);
                         break;
                     }
                     llama_batch_free(db);
-                    fprintf(stderr, "sampling draft d=%d\n", d);
-                    draft_tok = llama_sampler_sample(sampler, draft_ctx, 0);
+                    draft_tok = llama_sampler_sample(draft_sampler, draft_ctx, 0);
                     draft_tokens.push_back(draft_tok);
                 }
 
-                fprintf(stderr, "draft done, %zu tokens, verifying...\n", draft_tokens.size());
-
-                // verify draft tokens with target model
                 verify_batch.token[0]     = last_tok;
                 verify_batch.pos[0]       = req->n_pos;
                 verify_batch.n_seq_id[0]  = 1;
@@ -169,10 +164,11 @@ void Scheduler::run() {
                     continue;
                 }
 
-                // accept tokens greedily
+                int n_accepted = 0;
                 for (int d = 0; d < (int)draft_tokens.size(); d++) {
                     llama_token target_tok = llama_sampler_sample(sampler, this->ctx, d + 1);
                     if (target_tok == draft_tokens[d]) {
+                        n_accepted++;
                         std::lock_guard<std::mutex> lock(req->mtx);
                         req->token_queue.push(draft_tokens[d]);
                         req->cv.notify_one();
@@ -196,17 +192,11 @@ void Scheduler::run() {
                         break;
                     }
                 }
-                
-                fprintf(stderr, "after accept: seq=%d n_pos=%d output_size=%zu\n",
-        req->seq_id, req->n_pos, req->output_tokens.size());
 
-                // trim target KV cache to accepted length
+                fprintf(stderr, "accepted %d/%zu draft tokens\n", n_accepted, draft_tokens.size());
+
                 llama_memory_seq_rm(llama_get_memory(ctx), req->seq_id, req->n_pos, -1);
-
-
-                // trim draft KV cache to accepted length
-                llama_memory_seq_rm(llama_get_memory(draft_ctx), req->seq_id,
-                                    req->n_pos, -1);
+                llama_memory_seq_rm(llama_get_memory(draft_ctx), req->seq_id, req->n_pos, -1);
 
                 llama_batch_free(verify_batch);
             }

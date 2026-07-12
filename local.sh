@@ -13,6 +13,11 @@ start_server_tinyllama() {
     ./tark.exe "$MODEL"
 }
 
+start_server_llama() {
+    cd "$TARK_DIR/build"
+    ./tark.exe "$LLAMA_TARGET" "$LLAMA_DRAFT"
+}
+
 start_llamacpp() {
     "$TARK_DIR/vendor/llama.cpp/build/bin/llama-server.exe" \
         -m "$MODEL" --port 8081
