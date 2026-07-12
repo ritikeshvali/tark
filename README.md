@@ -31,15 +31,15 @@ HTTP thread       ->  stream tokens to client via SSE
 - KV cache reuse across turns
 - continuous batching
 - prefix caching
+- speculative decoding (draft model generates candidates, target verifies in one pass)
+- benchmark harness vs llama.cpp server
 
 ## in progress
-- benchmark harness vs llama.cpp server (throughput, latency, tokens/sec)
 
 ## planned capabilities
-- speculative decoding
 - per-request latency logging (TTFT, tokens/sec)
-- /v1/metrics endpoint
 - temperature + top-p sampling
+- /v1/metrics endpoint
 - /v1/chat/completions endpoint (OpenAI chat format)
 - request cancellation on client disconnect
 
@@ -57,7 +57,7 @@ HTTP thread       ->  stream tokens to client via SSE
 mkdir build && cd build
 cmake .. -G "MinGW Makefiles"
 mingw32-make -j4
-./tark /path/to/model.gguf
+./tark /path/to/target_model.gguf [/path/to/draft_model.gguf]
 ```
 
 **test endpoints**
