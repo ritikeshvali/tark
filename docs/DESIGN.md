@@ -220,3 +220,26 @@ previously both showed "All requests failed" with no distinction.
 ### rejected
 SQLite: binary format, needs sqlite3 to inspect manually. JSONL is simpler and sufficient.
 Avro: schema registry overhead, not human readable, overkill for a benchmark tool.
+
+## speculative decoding
+
+### goal
+reduce decode latency by drafting N tokens with a small model and verifying them in one parallel pass with the target model. the accepted tokens are free, they cost only the draft model's time. this is comparatively very short.
+
+### implementation
+draft model runs autoregressively for N_DRAFT=5 steps per request. target model verifies all 5 in one llama_decode call with logits enabled at each draft position. tokens accepted greedily, if target agrees with draft at position d, accept it, otherwise reject and use target's token instead.
+
+both target and draft KV caches trimmed to accepted position after each iteration. separate samplers for draft and target to avoid shared penalty state.
+
+### models tried
+qwen 0.5B + 1.5B: 0% acceptance on open prompts, 100% on repetitive sequences.
+llama 1B + 3B: 0% acceptance with greedy sampling.
+
+### why 0% acceptance
+greedy acceptance requires exact token match, any distribution difference means rejection.
+possible reasons for divergence:
+
+- model size gap: 1B and 3B have different capacity, their top-1 token often differs even when their distributions are similar overall
+- no chat template: both models are instruct-tuned, raw prompts may push them into different modes
+- repetition penalty state: even with separate samplers, the penalty window tracks different histories for draft and target since they see tokens at different times
+- stochastic acceptance would help: min(1, p_target/p_draft) accepts even when tokens differ if the draft was plausible, but requires full logit vectors not just sampled tokens

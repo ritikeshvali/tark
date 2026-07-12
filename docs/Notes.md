@@ -87,3 +87,16 @@ llamacpp is ~28% faster on TTFT, ~13% faster on total latency.
 root cause: tark calls llama_batch_init(active_list.size()) so batch shape changes as requests join/leave. llama.cpp rebuilds compute graph on every shape change. llamacpp server pads to fixed n_parallel=4, graph shape stays constant, reused every decode step ("graphs reused = 124" in logs).
 
 to fix it, we will have to init batch to n_parallel size always, pad inactive slots
+
+## speculative decoding
+
+draft N tokens with small model, verify in one target forward pass, accept greedily. both KV caches need trimming after each iteration, target accumulates stale positions from rejected draft tokens, draft accumulates positions from the seed decode.
+
+seed decode: feed last accepted token to draft model at current position before drafting to get fresh logits. prefill logits are gone by the time the draft loop runs.
+
+acceptance rate: 0% with both qwen 0.5B/1.5B and llama 3.2 1B/3B on open prompts.
+
+possible causes: model size gap means top-1 tokens differ even with similar distributions, no chat template on instruct models, repetition penalty tracking different histories for draft and target.
+but the mechanism is correct as acceptance hits 100% on repetitive sequences where both models agree.
+
+stochastic acceptance (min(1, p_target/p_draft)) requires full logit vectors, not just sampled tokens and would accept plausible draft tokens even when not exact match.
