@@ -29,7 +29,8 @@ std::shared_ptr<Request> Scheduler::submit(const std::string& prompt) {
 void Scheduler::run() {
     auto sparams = llama_sampler_chain_default_params();
     llama_sampler* sampler = llama_sampler_chain_init(sparams);
-    llama_sampler_chain_add(sampler, llama_sampler_init_greedy());
+    llama_sampler_chain_add(sampler, llama_sampler_init_penalties(64, 1.1f, 0.0f, 0.0f));
+    llama_sampler_chain_add(sampler, llama_sampler_init_greedy());  
 
     while(true) {
         active_list.erase(
